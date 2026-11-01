@@ -46,3 +46,23 @@ def test_model_beats_the_dummy_baseline():
     train, test = time_split(df)
     result = compare_to_baseline(train, test)
     assert result["model"]["pr_auc"] > result["dummy"]["pr_auc"] + 0.05
+
+
+# added a test to check time stamp
+def test_same_timestamp_parcels_do_not_count_each_other():
+    df = pd.DataFrame({
+        "customer_id": ["C1", "C1", "C1"],
+        "created_at": pd.to_datetime([
+            "2026-06-01 09:00",
+            "2026-06-01 09:00",
+            "2026-06-02 09:00",
+        ]),
+        "failed": [1, 0, 1],
+    })
+
+    out = add_history_features(df)
+
+    assert out["customer_prior_parcels"].tolist() == [0, 0, 2]
+    assert out["customer_prior_fail_rate"].iloc[0] != out["customer_prior_fail_rate"].iloc[0]
+    assert out["customer_prior_fail_rate"].iloc[1] != out["customer_prior_fail_rate"].iloc[1]
+    assert out["customer_prior_fail_rate"].iloc[2] == pytest.approx(0.5)
