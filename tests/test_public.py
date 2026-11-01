@@ -49,20 +49,42 @@ def test_model_beats_the_dummy_baseline():
 
 
 # added a test to check time stamp
-def test_same_timestamp_parcels_do_not_count_each_other():
+def test_history_same_minute_parcels_do_not_count_each_other():
     df = pd.DataFrame({
-        "customer_id": ["C1", "C1", "C1"],
+        "customer_id": ["A", "A", "A"],
         "created_at": pd.to_datetime([
-            "2026-06-01 09:00",
-            "2026-06-01 09:00",
-            "2026-06-02 09:00",
+            "2026-06-01 09:00:05",
+            "2026-06-01 09:00:40",
+            "2026-06-01 09:01:10",
         ]),
         "failed": [1, 0, 1],
     })
 
-    out = add_history_features(df)
+    result = add_history_features(df)
 
-    assert out["customer_prior_parcels"].tolist() == [0, 0, 2]
-    assert out["customer_prior_fail_rate"].iloc[0] != out["customer_prior_fail_rate"].iloc[0]
-    assert out["customer_prior_fail_rate"].iloc[1] != out["customer_prior_fail_rate"].iloc[1]
-    assert out["customer_prior_fail_rate"].iloc[2] == pytest.approx(0.5)
+    assert result["customer_prior_parcels"].tolist() == [0, 0, 2]
+    assert pd.isna(result["customer_prior_fail_rate"].iloc[0])
+    assert pd.isna(result["customer_prior_fail_rate"].iloc[1])
+    assert result["customer_prior_fail_rate"].iloc[2] == 0.5
+
+
+# hixa fix
+def test_time_split_keeps_all_boundary_timestamp_rows():
+    df = pd.DataFrame({
+        "created_at": pd.to_datetime([
+            "2026-06-01",
+            "2026-06-02",
+            "2026-06-03",
+            "2026-06-03",
+            "2026-06-03",
+        ]),
+        "value": [1, 2, 3, 4, 5],
+    }, index=[10, 20, 30, 40, 50])
+
+    train, test = time_split(df, test_fraction=0.4)
+
+    assert len(train) + len(test) == len(df)
+    assert train["created_at"].max() < test["created_at"].min()
+    assert len(test) == 3
+    assert test.index.tolist() == [30, 40, 50]
+    assert set(train.index).isdisjoint(set(test.index))
