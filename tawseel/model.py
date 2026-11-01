@@ -33,70 +33,34 @@ CATEGORICAL_COLUMNS = ["customer_id", "merchant_id",
 
 
 def add_history_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add customer history using strictly earlier minute groups."""
-
     out = df.copy()
-
     history = df[["customer_id", "created_at", "failed"]].copy()
     history["_time_bucket"] = history["created_at"].dt.floor("min")
 
-    grouped = (
-        history.groupby(
-            ["customer_id", "_time_bucket"],
-            dropna=False,
-            sort=False,
-        )["failed"]
-        .agg(
-            group_count="size",
-            group_failures="sum",
-        )
-        .reset_index()
-    )
-
+    grouped = history.groupby(["customer_id", "_time_bucket"], dropna=False, sort=False)[
+        "failed"].agg(group_count="size", group_failures="sum").reset_index()
     grouped = grouped.sort_values(
-        ["customer_id", "_time_bucket"],
-        kind="mergesort",
-    )
+        ["customer_id", "_time_bucket"], kind="mergesort")
 
-    by_customer = grouped.groupby(
-        "customer_id",
-        dropna=False,
-        sort=False,
-    )
+    by_customer = grouped.groupby("customer_id", dropna=False, sort=False)
 
-    grouped["customer_prior_parcels"] = (
-        by_customer["group_count"].cumsum()
-        - grouped["group_count"]
-    )
+    grouped["customer_prior_parcels"] = by_customer["group_count"].cumsum() - \
+        grouped["group_count"]
+    grouped["customer_prior_failures"] = by_customer["group_failures"].cumsum(
+    ) - grouped["group_failures"]
+    grouped["customer_prior_fail_rate"] = grouped["customer_prior_failures"] / \
+        grouped["customer_prior_parcels"]
 
-    grouped["customer_prior_failures"] = (
-        by_customer["group_failures"].cumsum()
-        - grouped["group_failures"]
-    )
-
-    grouped["customer_prior_fail_rate"] = (
-        grouped["customer_prior_failures"]
-        / grouped["customer_prior_parcels"]
-    )
-
-    lookup = grouped.set_index(
-        ["customer_id", "_time_bucket"]
-    )[["customer_prior_parcels", "customer_prior_fail_rate"]]
-
-    row_keys = pd.MultiIndex.from_arrays([
-        df["customer_id"],
-        df["created_at"].dt.floor("min"),
-    ])
-
+    lookup = grouped.set_index(["customer_id", "_time_bucket"])[
+        ["customer_prior_parcels", "customer_prior_fail_rate"]]
+    row_keys = pd.MultiIndex.from_arrays(
+        [df["customer_id"], df["created_at"].dt.floor("min")])
     mapped = lookup.reindex(row_keys)
 
-    out["customer_prior_parcels"] = (
-        mapped["customer_prior_parcels"].to_numpy(dtype=np.int64)
-    )
-
-    out["customer_prior_fail_rate"] = (
-        mapped["customer_prior_fail_rate"].to_numpy(dtype=float)
-    )
+    out["customer_prior_parcels"] = mapped["customer_prior_parcels"].to_numpy(
+        dtype=np.int64)
+    out["customer_prior_fail_rate"] = mapped["customer_prior_fail_rate"].to_numpy(
+        dtype=float)
 
     return out
 
